@@ -68,6 +68,7 @@ body,
 .phone {
   width: 37.5rem;
   height: 81.2rem;
+  max-height: 100%;
   border-radius: 4.2rem;
   position: relative;
   overflow: hidden;
@@ -105,6 +106,21 @@ body,
 
   display: flex;
   flex-direction: column;
+
+  overflow-y: scroll;
+}
+
+.wallet::-webkit-scrollbar {
+  width: 4px; /* width of the entire scrollbar */
+}
+
+.wallet::-webkit-scrollbar-track {
+  background: black; /* color of the tracking area */
+}
+
+.wallet::-webkit-scrollbar-thumb {
+  background-color: #333; /* color of the scroll thumb */
+  border-radius: 10px; /* roundness of the scroll thumb */
 }
 
 /* to get started */

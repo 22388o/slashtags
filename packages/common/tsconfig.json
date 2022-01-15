@@ -1,5 +1,9 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": { "outDir": "types" },
-  "include": ["src", "../../types"]
+  "extends": "aegir/src/config/tsconfig.aegir.json",
+  "compilerOptions": {
+    "outDir": "types",
+    "module": "es2020"
+  },
+  "include": ["src", "../../types", "types/src/interfaces.ts"],
+  "references": []
 }

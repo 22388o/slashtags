@@ -24,4 +24,4 @@ npm run full-check
 
 ### Adding new package
 
-TODO: write documentation for all steps needed for adding new package
+run `npm run new-package` to create a new package.

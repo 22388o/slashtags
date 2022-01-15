@@ -1,3 +1,3 @@
-# Slashtags Core
+# slashtags-core
 
-> Core implementation of Slashtags protocol in JS
+> JavaScript implementation of the Slashtags protocol

@@ -1,86 +1,86 @@
-import jsonrpc from 'jsonrpc-lite'
-import b4a from 'b4a'
+import jsonrpc from 'jsonrpc-lite';
+import b4a from 'b4a';
 
 /**
  * @class
  * @returns
  */
-export function Engine () {
+export function RPC() {
   // TODO: Add use() function to add middlewares
   //   this.middlewares = [];
 
   /** @type {Record<string, Method>} */
-  let _handlers = {}
+  let _handlers = {};
 
   /**
    *
    * @param {Record<string, Method>} methods
    * @returns
    */
-  this.addMethods = (methods) => (_handlers = { ..._handlers, ...methods })
+  this.addMethods = (methods) => (_handlers = { ..._handlers, ...methods });
 
   /**
    * @param {string | Uint8Array} data
-   * @param {NoiseSocket} noiseSocket
+   * @param {SecretStream} noiseSocket
    */
   this.handleRaw = async (data, noiseSocket) =>
     noiseSocket.write(
       await this.handle({
         ...JSON.parse(typeof data === 'string' ? data : b4a.toString(data)),
-        noiseSocket
-      })
-    )
+        noiseSocket,
+      }),
+    );
 
   /**
    * @param {Request} request
    * @returns
    */
   this.handle = async function (request) {
-    const parsed = jsonrpc.parseObject(request)
+    const parsed = jsonrpc.parseObject(request);
 
     if (parsed.type === 'invalid') {
-      return JSON.stringify(parsed.payload)
+      return JSON.stringify(parsed.payload);
     } else if (parsed.type === 'request') {
       try {
         if (!(parsed.payload.method in _handlers)) {
           throw new jsonrpc.JsonRpcError(
             `Method not found: ${parsed.payload.method}`,
-            -32601
-          )
+            -32601,
+          );
         }
 
-        const apiRes = await _handlers[parsed.payload.method](request)
-        return JSON.stringify(jsonrpc.success(parsed.payload.id, apiRes))
+        const apiRes = await _handlers[parsed.payload.method](request);
+        return JSON.stringify(jsonrpc.success(parsed.payload.id, apiRes));
       } catch (/** @type {*} */ e) {
         const rpcErr = new jsonrpc.JsonRpcError(
           e.message || e.toString(),
           e.code || -32000,
-          e.data
-        )
-        return JSON.stringify(jsonrpc.error(parsed.payload.id, rpcErr))
+          e.data,
+        );
+        return JSON.stringify(jsonrpc.error(parsed.payload.id, rpcErr));
       }
     }
-  }
+  };
 
-  const waitingFrames = new Map()
-  let callID = 0
+  const waitingFrames = new Map();
+  let callID = 0;
 
   /**
    *
    * @param {Uint8Array} data
    */
   this.handleResponse = async function (data) {
-    const message = JSON.parse(b4a.toString(data, 'utf8'))
-    const waitingFrame = waitingFrames.get(message.id)
-    if (message.result) waitingFrame?.resolve(message)
-    if (message.error) waitingFrame?.reject(message)
-  }
+    const message = JSON.parse(b4a.toString(data, 'utf8'));
+    const waitingFrame = waitingFrames.get(message.id);
+    if (message.result) waitingFrame?.resolve(message);
+    if (message.error) waitingFrame?.reject(message);
+  };
 
   /**
    *
    * @param {string} method
    * @param {RpcParams} params
-   * @param {NoiseSocket} noiseSocket
+   * @param {SecretStream} noiseSocket
    * @throws {Error}
    */
   this.call = async function (method, params, noiseSocket) {
@@ -88,28 +88,28 @@ export function Engine () {
       jsonrpc: '2.0',
       method: method,
       params,
-      id: callID++
-    }
+      id: callID++,
+    };
 
-    noiseSocket.write(JSON.stringify(message))
+    noiseSocket.write(JSON.stringify(message));
 
     const response = await new Promise(function (resolve, reject) {
       waitingFrames.set(message.id, {
         resolve,
-        reject
-      })
-    })
+        reject,
+      });
+    });
 
-    const parsed = jsonrpc.parseObject(response)
+    const parsed = jsonrpc.parseObject(response);
     return {
       // @ts-ignore
       body: parsed.payload.result,
-      noiseSocket
-    }
-  }
+      noiseSocket,
+    };
+  };
 }
 
 /** @typedef {import ('./interfaces').RpcParams} RpcParams */
-/** @typedef {import ('./interfaces').NoiseSocket} NoiseSocket */
-/** @typedef {import ('./interfaces').EngineMethod} Method */
-/** @typedef {import ('./interfaces').EngineRequest} Request */
+/** @typedef {import ('dht-universal').SecretStream} SecretStream */
+/** @typedef {import ('./interfaces').RPCMethod} Method */
+/** @typedef {import ('./interfaces').RPCRequest} Request */
