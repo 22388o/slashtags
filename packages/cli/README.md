@@ -5,11 +5,15 @@ DID prototype goals:
 [x] Create dids
 [x] DIDs store
 [x] Format did documents
-[ ] Seed dids (daemon)
+[x] Seed dids (daemon)
 [x] Resolve remote DIDs
 [ ] Add service
+[ ] Add key
+[ ] Remove key
+[ ] Remove service
+
+Availability features?
+
 [ ] Broadcast DIDs
 [ ] Pin DIDs
-[ ] add key
-[ ] remove key
-[ ] remove service
+[ ] Flooding to distribute dids

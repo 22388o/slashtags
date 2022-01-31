@@ -4,8 +4,8 @@ import autoCompletePrompt from 'inquirer-autocomplete-prompt';
 
 inquirer.registerPrompt('autocomplete', autoCompletePrompt);
 
-import './did.js';
 import './daemon.js';
+import './did.js';
 
 process.title = 'slashtags';
 

@@ -2,43 +2,30 @@ import { program } from 'commander';
 import inquirer from 'inquirer';
 import { printTable } from 'console-table-printer';
 import { Slashtags } from './lib/core.js';
-import { SlashDID, DIDStore } from './lib/dids.js';
+import { DIDStore } from './lib/dids.js';
 
 const did = program.command('did').description('Slashtag DIDs');
 
 did
-  .command('create')
+  .command('create <alias>')
   .description('Create a new slashtags DID')
-  .action(async (cmd) => {
+  .action(async (alias) => {
     const node = new Slashtags();
-    const didManager = await new DIDStore({ node }).ready();
-
-    const answers = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'alias',
-        message: 'Enter alias',
-      },
-    ]);
+    const didManager = await new DIDStore({ node }).init();
 
     let did;
 
-    if (didManager.dids.has(answers.alias)) {
+    if (didManager.aliases.has(alias)) {
       console.log('DID already exists: ');
-      did = didManager.dids.get(answers.alias);
+      did = didManager.aliases.get(alias);
     } else {
-      did = await didManager.createDID(answers.alias);
+      did = await didManager.createDID(alias);
       console.log('Created aliased DID: ');
     }
 
-    printTable([
-      {
-        alias: answers.alias,
-        did: did.uri,
-      },
-    ]);
+    printTable([{ alias: alias, did: did.uri }]);
 
-    // await node.close();
+    await node.close();
   });
 
 did
@@ -46,13 +33,15 @@ did
   .description('List managed Slashtags DIDs')
   .action(async (cmd) => {
     const node = new Slashtags();
-    const didStore = await new DIDStore({ node }).ready();
+    const didStore = await new DIDStore({ node }).init();
 
-    if (didStore.dids.size === 0) {
+    const aliases = await didStore.ls();
+
+    if (aliases.size === 0) {
       console.log('No DIDs found');
     } else {
       printTable(
-        Array.from(didStore.dids.entries()).map(([alias, did]) => ({
+        Array.from(aliases.entries()).map(([alias, did]) => ({
           alias,
           did: did.uri,
         })),
@@ -63,16 +52,17 @@ did
   });
 
 did
-  .command('resolve <didUrl>')
+  .command('resolve <didUri>')
   .description('Resolve a slashtags DID Document')
   .action(async (didUri) => {
-    const node = await new Slashtags({ persist: true }).ready();
+    const node = new Slashtags({ persist: false });
+    const didStore = await new DIDStore({ node }).init();
 
-    const { slash: resolve } = SlashDID.getResolver(node);
+    console.log('Resolving DID, this can take few seconds...');
 
-    const doc = await resolve(didUri);
+    const doc = await didStore.resolve(didUri);
 
     console.dir(doc, { depth: null });
 
-    // slash.close();
+    node.close();
   });

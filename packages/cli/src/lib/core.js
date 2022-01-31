@@ -1,7 +1,9 @@
 import Corestore from 'corestore';
 import RAM from 'random-access-memory';
 import Hyperswarm from 'hyperswarm';
-import Networker from './networker.js';
+import Hypercore from 'hypercore';
+import Hyperbee from 'hyperbee';
+import b4a from 'b4a';
 
 const DEFAULT_CORESTORE_OPTS = {
   sparse: true,
@@ -17,8 +19,6 @@ const DEFAULT_CORE_OPTS = {
   keyEncoding: 'utf8',
   valueEncoding: 'json',
 };
-
-const PROTECTED_NAMES = ['DID_STORE'];
 
 export class Slashtags {
   constructor(opts = {}) {
@@ -39,53 +39,78 @@ export class Slashtags {
 
     this.storage = this.store.storage;
 
-    this.networker = new Networker(this.store, {
+    this.swarm = new Hyperswarm({
       ...DEFAULT_SWARM_OPTS,
       ...swarmOpts,
     });
 
-    this.dids = new Map();
+    this.swarm.on('connection', (socket, info) => {
+      this.store.replicate(socket);
+    });
+
+    const dbCore = new Hypercore((p) => this.storage('library/' + p));
+    this.db = new Hyperbee(dbCore, {
+      keyEncoding: 'utf8',
+      valueEncoding: 'json',
+    });
+
+    this.coresCollection = this.db.sub('cores');
   }
 
   async ready() {
+    await this.db.ready();
     await this.store.ready();
     return this;
   }
 
   async close() {
+    await this.swarm.destroy();
     await this.store.close();
-    await this.networker.close();
   }
 
   async createCore(opts) {
-    if (PROTECTED_NAMES.includes(opts.name)) throw new Error('Protected name');
-
     const core = this.store.get({
       ...DEFAULT_CORE_OPTS,
       ...opts,
     });
     await core.ready();
 
+    this.addCore(core);
+
     const { announce = true, lookup = true } = opts;
     if (!announce && !lookup) return core;
 
-    this.networker.configure(core.discoveryKey, { announce, lookup });
-
-    core.once('close', () => {
-      this.networker.configure(core.discoveryKey, {
-        announce: false,
-        lookup: false,
-      });
+    this.swarm.join(core.discoveryKey, {
+      server: announce,
+      client: lookup,
     });
 
     return core;
+  }
+
+  async addCore(core) {
+    await this.coresCollection.ready();
+    const id = b4a.toString(core.key, 'hex');
+    if (await this.coresCollection.get(id)) return;
+    this.coresCollection.put(id);
   }
 
   async getCoreTail(opts) {
     const core = await this.createCore(opts);
 
     // TODO test core.update again to avoid this hack
-    await core.get(0, { timeout: 0 });
+    await new Promise((resolve) => {
+      const interval = setInterval(() => {
+        if (core.length > 0) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 1);
+      setTimeout(() => {
+        clearInterval(interval);
+        resolve(null);
+      }, 2500);
+    });
 
     const tail = core.length > 0 ? await core.get(core.length - 1) : null;
 
