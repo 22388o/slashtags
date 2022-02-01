@@ -22,6 +22,7 @@ export class DIDStore {
 
   async init() {
     await this.node.ready();
+    await this._setupBroadcast();
     this.aliasedDids = this.node.db.sub('aliased-dids');
     this.knownDids = this.node.db.sub('known-dids');
     return this;
@@ -58,14 +59,24 @@ export class DIDStore {
       key: parseDidUri(didUri).key,
     });
 
+    console.log(tail);
+
     const newState = {
       ...tail,
-      services: Array.from(
-        new Map(
-          [...tail.services, service].map((service) => [service.id, service]),
-        ).values(),
-      ),
+      services:
+        tail.services?.length > 0
+          ? Array.from(
+              new Map(
+                [...tail.services, service].map((service) => [
+                  service.id,
+                  service,
+                ]),
+              ).values(),
+            )
+          : [service],
     };
+
+    console.log(newState);
 
     return await core.append(newState);
   }
@@ -76,7 +87,15 @@ export class DIDStore {
     }
   }
 
-  async updateKnownDids(didUri, found) {
+  async resolve(didUri) {
+    const result = await resolve(this.node, didUri);
+
+    this._updateKnownDids(didUri, result.didDocumentMetadata.versionId);
+
+    return result;
+  }
+
+  async _updateKnownDids(didUri, found) {
     if (!found) {
       this.knownDids.del(didUri);
     } else {
@@ -86,34 +105,33 @@ export class DIDStore {
     }
   }
 
-  async resolve(didUri) {
-    const result = await resolve(this.node, didUri);
+  async _setupBroadcast() {
+    // TODO - this should be a config option
+    const broadcastCore = await this.node.createCore({
+      key: DID_DISCOVERY_CORE_KEY,
+      announce: true,
+      lookup: true,
+    });
 
-    this.updateKnownDids(didUri, result.didDocumentMetadata.versionId);
-
-    return result;
-  }
-
-  async setupDiscoveryCore() {
-    // if (this.watching) return;
-
-    // this.discoveryCore = new Hypercore(ram, DID_DISCOVERY_CORE_KEY);
-    // await this.discoveryCore.ready();
-
-    // await this.node.swarm.join(this.discoveryCore.discoveryKey);
-    // this.watching = true;
-
-    // this.ext = this.discoveryCore.registerExtension('slash-did-discovery', {
-    //   encoding: 'json',
-    //   onmessage: (message, peer) => this.onmessage(message, peer),
-    //   // onerror: (e) => this.emit('error', e),
-    // });
+    const broadcastExt = broadcastCore.registerExtension(
+      'slash-did-discovery',
+      {
+        encoding: 'json',
+        onmessage: (message, peer) => this.onmessage(message, peer),
+        onerror: (e) => this.emit('error', e),
+      },
+    );
 
     // this.discoveryCore.on('peer-open', (peer) => this.onpeer(peer));
 
-    async function onmessage(message, peer) {}
+    async function onmessage(message, peer) {
+      console.log(message, peer);
+    }
 
-    async function onpeer(peer) {}
+    async function onpeer(peer) {
+      console.log(peer);
+      broadcastExt.broadcast();
+    }
   }
 }
 
@@ -191,13 +209,19 @@ function wrapDocument(content, did) {
 }
 
 /**
+ * @param {*} node
+ * @param {string} did
+ * @param {*} parsed
+ * @param {*} didResolver
+ * @param {DIDResolutionOptions} options
  * @returns {Promise<DIDResolutionResult>}
  */
 async function resolve(node, did, parsed, didResolver, options) {
   const contentType = options?.accept || RepresentationMethods.JSON_LD;
+  /** @type {DIDResolutionResult} */
   const response = {
     didResolutionMetadata: { contentType },
-    didDocument: null,
+    didDocument: { id: did },
     didDocumentMetadata: {},
   };
 
@@ -222,9 +246,10 @@ async function resolve(node, did, parsed, didResolver, options) {
         fork: core.core.tree.fork,
         treeHash: b4a.toString(core.core.tree.hash(), 'hex'),
       },
-      versionId: core.length > 0 && b4a.toString(core.core.tree.hash(), 'hex'),
-      // TODO support core forks in Hypercore 10
-      // fork: core.fork,
+      versionId:
+        core.length > 0
+          ? b4a.toString(core.core.tree.hash(), 'hex')
+          : undefined,
     };
 
     if (contentType === RepresentationMethods.JSON_LD) {
@@ -238,7 +263,7 @@ async function resolve(node, did, parsed, didResolver, options) {
       delete response.didResolutionMetadata.contentType;
       response.didResolutionMetadata.error = 'representationNotSupported';
     }
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     response.didResolutionMetadata.error = 'invalidDid';
     response.didResolutionMetadata.message = e.toString();
   }
@@ -248,7 +273,7 @@ async function resolve(node, did, parsed, didResolver, options) {
 
 /**
  * Convert a public key to a DID
- * @param {{publicKey: Uint8Array }}
+ * @param {Buffer} publicKey
  * @param {'ES256K' | 'EdDSA'} [type = 'ES256K']
  * @returns {string}
  */
@@ -262,7 +287,7 @@ function formatDidUri(publicKey, type) {
  * @param {string} didURI
  */
 function parseDidUri(didURI) {
-  const id = didURI.split(':').pop();
+  const id = didURI.split(':').pop() || '';
   const multiHash = base32.decode(id);
   const codec = multiHash.slice(1)[0];
   const key = b4a.from(multiHash.slice(2));
@@ -275,4 +300,5 @@ function parseDidUri(didURI) {
  * @typedef {import('./interfaces').SlashDIDPublicKey} SlashDIDPublicKey
  * @typedef {import('./interfaces').SlashDIDContent} SlashDIDContent
  * @typedef {import('did-resolver').DIDResolutionResult} DIDResolutionResult
+ * @typedef {import('did-resolver').DIDResolutionOptions} DIDResolutionOptions
  */

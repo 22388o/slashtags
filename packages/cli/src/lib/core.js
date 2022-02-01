@@ -76,6 +76,10 @@ export class Slashtags {
     const { announce = true, lookup = true } = opts;
     if (!announce && !lookup) return core;
 
+    // Avoid unnecessary discovery that needs to be flushed
+    if (this.swarm._discovery.has(b4a.toString(core.discoveryKey), 'hex'))
+      return;
+
     this.swarm.join(core.discoveryKey, {
       server: announce,
       client: lookup,

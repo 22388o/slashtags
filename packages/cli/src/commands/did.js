@@ -1,9 +1,9 @@
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import { printTable } from 'console-table-printer';
-import { Slashtags } from './lib/core.js';
-import { DIDStore } from './lib/dids.js';
 import _fetch from 'node-fetch';
+
+const NO_ALIASES_FOUND = 'No aliased Slashtags DIDs found';
 
 const did = program.command('did').description('Slashtag DIDs');
 
@@ -36,8 +36,8 @@ did
 
     if (!aliases) return;
 
-    aliases.length === 0
-      ? console.log('No DIDs found')
+    aliases.length === 0 && handleNoAliases()
+      ? console.log(NO_ALIASES_FOUND)
       : printTable(
           aliases.map(([alias, didUri]) => ({
             alias,
@@ -56,17 +56,50 @@ did
   });
 
 did
+  .command('show')
+  .description('Show DID Document of an alias')
+  .action(async (cmd) => {
+    const list = await fetch('list');
+    if (!list) return;
+
+    if (list.length === 0) {
+      console.log(NO_ALIASES_FOUND);
+      return;
+    }
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'alias',
+        choices: list.map((item) => item[0]),
+        message: 'Select DID',
+      },
+    ]);
+
+    const didUri = list.find((item) => item[0] === answers.alias)[1];
+
+    const doc = await fetch('resolve/' + didUri);
+
+    console.dir(doc, { depth: null });
+  });
+
+did
   .command('add-service')
   .description('add a service endpoint to did document')
   .action(async (cmd) => {
     const list = await fetch('list');
     if (!list) return;
 
+    if (list.length === 0) {
+      console.log(NO_ALIASES_FOUND);
+      return;
+    }
+
     const answers = await inquirer.prompt([
       {
         type: 'list',
-        name: 'did',
-        choices: list.map((item) => item[1]),
+        name: 'alias',
+        choices: list.map((item) => item[0]),
         message: 'Select DID',
       },
       {
@@ -87,10 +120,12 @@ did
       },
     ]);
 
+    const didUri = list.find((item) => item[0] === answers.alias)[1];
+
     await fetch('add-service', {
       method: 'post',
       body: JSON.stringify({
-        did: answers.did,
+        did: didUri,
         service: {
           type: answers.type,
           serviceEndpoint: answers.endpoint,
@@ -100,7 +135,7 @@ did
       headers: { 'Content-Type': 'application/json' },
     });
 
-    const newState = await fetch('resolve/' + answers.did);
+    const newState = await fetch('resolve/' + didUri);
 
     console.log('\nAdded a service to the did document:\n');
     console.dir(newState, { depth: null });
@@ -124,3 +159,5 @@ async function fetch(url, options) {
       `);
   }
 }
+
+async function handleNoAliases() {}
