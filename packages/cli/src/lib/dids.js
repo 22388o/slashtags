@@ -59,8 +59,6 @@ export class DIDStore {
       key: parseDidUri(didUri).key,
     });
 
-    throw new Error('aho keda');
-
     const newState = {
       ...tail,
       services:
