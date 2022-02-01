@@ -16,4 +16,4 @@ packages/*/dist
 .npmrc
 # Local Netlify folder
 .netlify
-packages/**/slash/store/
+packages/**/slash/

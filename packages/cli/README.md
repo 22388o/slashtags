@@ -8,9 +8,11 @@ DID prototype goals:
 [x] Seed dids (daemon)
 [x] Resolve remote DIDs
 [ ] Add service
+[ ] Optional Flooding to broadcast dids
 [ ] Add key
 [ ] Remove key
 [ ] Remove service
+[ ] Seed all vs aliased dids
 
 Availability features?
 

@@ -3,6 +3,7 @@ import inquirer from 'inquirer';
 import { printTable } from 'console-table-printer';
 import { Slashtags } from './lib/core.js';
 import { DIDStore } from './lib/dids.js';
+import _fetch from 'node-fetch';
 
 const did = program.command('did').description('Slashtag DIDs');
 
@@ -10,59 +11,65 @@ did
   .command('create <alias>')
   .description('Create a new slashtags DID')
   .action(async (alias) => {
-    const node = new Slashtags();
-    const didManager = await new DIDStore({ node }).init();
+    const response = await fetch('create', {
+      method: 'post',
+      body: JSON.stringify({ alias }),
+      headers: { 'Content-Type': 'application/json' },
+    });
 
-    let did;
+    if (!response) return;
 
-    if (didManager.aliases.has(alias)) {
-      console.log('DID already exists: ');
-      did = didManager.aliases.get(alias);
-    } else {
-      did = await didManager.createDID(alias);
-      console.log('Created aliased DID: ');
-    }
+    const { did, created } = response;
 
-    printTable([{ alias: alias, did: did.uri }]);
+    created
+      ? console.log('Created aliased DID: ')
+      : console.log('DID already exists: ');
 
-    await node.close();
+    printTable([{ alias, did }]);
   });
 
 did
   .command('list')
   .description('List managed Slashtags DIDs')
   .action(async (cmd) => {
-    const node = new Slashtags();
-    const didStore = await new DIDStore({ node }).init();
+    const aliases = await fetch('list');
 
-    const aliases = await didStore.ls();
+    if (!aliases) return;
 
-    if (aliases.size === 0) {
-      console.log('No DIDs found');
-    } else {
-      printTable(
-        Array.from(aliases.entries()).map(([alias, did]) => ({
-          alias,
-          did: did.uri,
-        })),
-      );
-    }
-
-    node.close();
+    aliases.length === 0
+      ? console.log('No DIDs found')
+      : printTable(
+          aliases.map(([alias, didUri]) => ({
+            alias,
+            did: didUri,
+          })),
+        );
   });
 
 did
   .command('resolve <didUri>')
   .description('Resolve a slashtags DID Document')
   .action(async (didUri) => {
-    const node = new Slashtags({ persist: false });
-    const didStore = await new DIDStore({ node }).init();
-
     console.log('Resolving DID, this can take few seconds...');
-
-    const doc = await didStore.resolve(didUri);
-
+    const doc = await fetch('resolve/' + didUri);
     console.dir(doc, { depth: null });
-
-    node.close();
   });
+
+async function fetch(url, options) {
+  try {
+    const response = await _fetch('http://127.0.0.1:8080/did/' + url, options);
+
+    if (!response.ok) {
+      const error = new Error(response.statusText);
+      throw error;
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.name === 'FetchError')
+      console.log(`The daemon is not active. Please run:
+
+  slash daemon start
+      `);
+  }
+}

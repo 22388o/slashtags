@@ -18,75 +18,63 @@ const DID_DISCOVERY_CORE_KEY = b4a.from(
 export class DIDStore {
   constructor(opts) {
     this.node = opts.node;
-    this.aliases = new Map();
-
-    this.aliasesCollection = this.node.db.sub('aliases');
-
-    this.setupDiscoveryCore();
   }
 
   async init() {
     await this.node.ready();
-    this.seedDIDs();
+    this.aliasedDids = this.node.db.sub('aliased-dids');
+    this.knownDids = this.node.db.sub('known-dids');
     return this;
   }
 
   async ls() {
-    if (this.aliases.size > 0) return this.aliases;
-    await this.loadAliases();
-    return this.aliases;
-  }
-
-  async loadAliases() {
-    const stream = this.aliasesCollection.createReadStream();
-    const entries = [];
-
-    stream.on('data', (data) => entries.push(data));
-
-    await new Promise((resolve) => {
-      stream.on('end', function () {
-        resolve(entries);
-      });
-    });
-
-    this.aliases = new Map(
-      entries.map((entry) => [
-        entry.key,
-        { uri: entry.value.uri, coreKey: b4a.from(entry.value.coreKey, 'hex') },
-      ]),
+    const stream = this.aliasedDids.createReadStream();
+    /** @type {Array<[string, string]>} */
+    const list = [];
+    stream.on(
+      'data',
+      /** @param {{key:string, value: string}} data*/
+      (data) => list.push([data.key, data.value]),
     );
-  }
-
-  setDid({ alias, uri, coreKey }) {
-    this.aliases.set(alias, { uri, coreKey });
-    return this.aliasesCollection.put(alias, {
-      uri,
-      coreKey: b4a.toString(coreKey, 'hex'),
-    });
+    await new Promise((resolve) => stream.on('end', resolve));
+    return list;
   }
 
   async createDID(alias) {
-    if (this.aliases.has(alias)) return this.aliases.get(alias);
+    const entry = await this.aliasedDids.get(alias);
+    if (entry) return { alias, did: entry.value, created: false };
 
     const core = await this.node.createCore({ name: alias });
     await core.append({});
 
-    const did = { alias, uri: format(core.key), coreKey: core.key };
-    await this.setDid(did);
+    const didUri = formatDidUri(core.key);
 
-    return did;
+    await this.aliasedDids.put(alias, didUri);
+    return { alias, did: didUri, created: true };
   }
 
-  async seedDIDs() {
-    const aliases = await this.ls();
-
-    for (const { coreKey } of aliases.values()) {
-      await this.node.createCore({ key: coreKey });
+  async seedLocalDIDs() {
+    for (const [_, didUri] of (await this.ls()).values()) {
+      await this.node.createCore({ key: parseDidUri(didUri).key });
     }
   }
 
-  resolve(didUri) {
-    return resolve(this.node, didUri);
+  async updateKnownDids(didUri, found) {
+    if (!found) {
+      this.knownDids.del(didUri);
+    } else {
+      this.knownDids.get(didUri).then((saved) => {
+        if (!saved) this.knownDids.put(didUri);
+      });
+    }
+  }
+
+  async resolve(didUri) {
+    const result = await resolve(this.node, didUri);
+
+    this.updateKnownDids(didUri, result.didDocumentMetadata.versionId);
+
+    return result;
   }
 
   async setupDiscoveryCore() {
@@ -197,7 +185,7 @@ async function resolve(node, did, parsed, didResolver, options) {
   };
 
   try {
-    const { key, type } = coreKey(did);
+    const { key, type } = parseDidUri(did);
 
     if (type !== 'EdDSA') {
       // TODO support custom crypto
@@ -212,8 +200,12 @@ async function resolve(node, did, parsed, didResolver, options) {
       // created: head.created,
       // updated: head.updated,
       deactivated: tail?.deactivated || false,
-      published: core.length > 0,
-      versionId: core.length > 0 ? core.length : null,
+      merkleTree: core.length > 0 && {
+        length: core.length,
+        fork: core.core.tree.fork,
+        treeHash: b4a.toString(core.core.tree.hash(), 'hex'),
+      },
+      versionId: core.length > 0 && b4a.toString(core.core.tree.hash(), 'hex'),
       // TODO support core forks in Hypercore 10
       // fork: core.fork,
     };
@@ -243,7 +235,7 @@ async function resolve(node, did, parsed, didResolver, options) {
  * @param {'ES256K' | 'EdDSA'} [type = 'ES256K']
  * @returns {string}
  */
-function format(publicKey, type) {
+function formatDidUri(publicKey, type) {
   const codec = type === 'ES256K' ? 0xe7 : 0xed;
   return URL_PREFIX + base32.encode(prepend(codec, publicKey));
 }
@@ -252,7 +244,7 @@ function format(publicKey, type) {
  * Get the public key of the Hypercore from the did uri
  * @param {string} didURI
  */
-function coreKey(didURI) {
+function parseDidUri(didURI) {
   const id = didURI.split(':').pop();
   const multiHash = base32.decode(id);
   const codec = multiHash.slice(1)[0];

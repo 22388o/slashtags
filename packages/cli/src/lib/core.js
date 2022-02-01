@@ -3,6 +3,7 @@ import RAM from 'random-access-memory';
 import Hyperswarm from 'hyperswarm';
 import Hypercore from 'hypercore';
 import Hyperbee from 'hyperbee';
+import { homedir } from 'os';
 import b4a from 'b4a';
 
 const DEFAULT_CORESTORE_OPTS = {
@@ -26,7 +27,7 @@ export class Slashtags {
 
     if (!storage && !corestore) {
       if (persist !== false) {
-        storage = 'slash/store';
+        storage = homedir() + '/.slash';
       } else {
         storage = RAM;
       }
@@ -37,24 +38,21 @@ export class Slashtags {
       ...corestoreOpts,
     });
 
-    this.storage = this.store.storage;
-
     this.swarm = new Hyperswarm({
       ...DEFAULT_SWARM_OPTS,
       ...swarmOpts,
     });
 
+    const subStorage = (dir) => (p) => this.store.storage(dir + '/' + p);
+
     this.swarm.on('connection', (socket, info) => {
       this.store.replicate(socket);
     });
 
-    const dbCore = new Hypercore((p) => this.storage('library/' + p));
-    this.db = new Hyperbee(dbCore, {
+    this.db = new Hyperbee(new Hypercore(subStorage('db')), {
       keyEncoding: 'utf8',
       valueEncoding: 'json',
     });
-
-    this.coresCollection = this.db.sub('cores');
   }
 
   async ready() {
@@ -75,8 +73,6 @@ export class Slashtags {
     });
     await core.ready();
 
-    this.addCore(core);
-
     const { announce = true, lookup = true } = opts;
     if (!announce && !lookup) return core;
 
@@ -86,13 +82,6 @@ export class Slashtags {
     });
 
     return core;
-  }
-
-  async addCore(core) {
-    await this.coresCollection.ready();
-    const id = b4a.toString(core.key, 'hex');
-    if (await this.coresCollection.get(id)) return;
-    this.coresCollection.put(id);
   }
 
   async getCoreTail(opts) {
