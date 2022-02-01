@@ -55,6 +55,57 @@ did
     console.dir(doc, { depth: null });
   });
 
+did
+  .command('add-service')
+  .description('add a service endpoint to did document')
+  .action(async (cmd) => {
+    const list = await fetch('list');
+    if (!list) return;
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'did',
+        choices: list.map((item) => item[1]),
+        message: 'Select DID',
+      },
+      {
+        type: 'text',
+        name: 'type',
+        message: 'Service type',
+        default: 'PersonalDataStore',
+      },
+      {
+        type: 'text',
+        name: 'endpoint',
+        message: 'Endpoint',
+      },
+      {
+        type: 'text',
+        name: 'id',
+        message: 'ID',
+      },
+    ]);
+
+    await fetch('add-service', {
+      method: 'post',
+      body: JSON.stringify({
+        did: answers.did,
+        service: {
+          type: answers.type,
+          serviceEndpoint: answers.endpoint,
+          id: answers.id,
+        },
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const newState = await fetch('resolve/' + answers.did);
+
+    console.log('\nAdded a service to the did document:\n');
+    console.dir(newState, { depth: null });
+  });
+
 async function fetch(url, options) {
   try {
     const response = await _fetch('http://127.0.0.1:8080/did/' + url, options);

@@ -7,12 +7,13 @@ DID prototype goals:
 [x] Format did documents
 [x] Seed dids (daemon)
 [x] Resolve remote DIDs
-[ ] Add service
-[ ] Optional Flooding to broadcast dids
+[x] Add service
+[ ] Broadcast
+[ ] Watch and seed
 [ ] Add key
 [ ] Remove key
 [ ] Remove service
-[ ] Seed all vs aliased dids
+[ ] Optional seeding
 
 Availability features?
 

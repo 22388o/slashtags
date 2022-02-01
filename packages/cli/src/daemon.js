@@ -38,5 +38,10 @@ async function setup() {
     return foo;
   });
 
+  app.post('/did/add-service', async (request, reply) => {
+    const { did, service } = request.body;
+    return didStore.addService(did, service);
+  });
+
   return app.listen(8080);
 }

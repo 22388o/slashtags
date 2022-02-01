@@ -53,6 +53,23 @@ export class DIDStore {
     return { alias, did: didUri, created: true };
   }
 
+  async addService(didUri, service) {
+    const { core, tail } = await this.node.getCoreTail({
+      key: parseDidUri(didUri).key,
+    });
+
+    const newState = {
+      ...tail,
+      services: Array.from(
+        new Map(
+          [...tail.services, service].map((service) => [service.id, service]),
+        ).values(),
+      ),
+    };
+
+    return await core.append(newState);
+  }
+
   async seedLocalDIDs() {
     for (const [_, didUri] of (await this.ls()).values()) {
       await this.node.createCore({ key: parseDidUri(didUri).key });
