@@ -17,8 +17,6 @@ daemon
       'server.js',
     );
 
-    console.log({ serverPath });
-
     // @ts-ignore
     pm2.start(
       {
@@ -51,6 +49,7 @@ daemon
     });
   });
 
+// TODO: How to log errors while in daemon mode?
 daemon
   .command('logs')
   .description('Show error logs')

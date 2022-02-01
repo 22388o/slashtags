@@ -32,16 +32,11 @@ const setup = async () => {
 
   app.post('/did/add-service', async (request, reply) => {
     const { did, service } = request.body;
-    // try {
     const response = await didStore.addService(did, service);
     return response;
-    // } catch (error) {
-    // console.log(error);
-    // }
   });
 
   const addr = await app.listen(8080);
-  console.log('listening', addr);
 };
 
 // Ensure error.log exists first

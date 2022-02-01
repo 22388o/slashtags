@@ -59,7 +59,7 @@ export class DIDStore {
       key: parseDidUri(didUri).key,
     });
 
-    console.log(tail);
+    throw new Error('aho keda');
 
     const newState = {
       ...tail,
@@ -75,8 +75,6 @@ export class DIDStore {
             )
           : [service],
     };
-
-    console.log(newState);
 
     return await core.append(newState);
   }
@@ -124,12 +122,9 @@ export class DIDStore {
 
     // this.discoveryCore.on('peer-open', (peer) => this.onpeer(peer));
 
-    async function onmessage(message, peer) {
-      console.log(message, peer);
-    }
+    async function onmessage(message, peer) {}
 
     async function onpeer(peer) {
-      console.log(peer);
       broadcastExt.broadcast();
     }
   }
