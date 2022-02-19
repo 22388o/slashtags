@@ -27,33 +27,51 @@ export interface SlashtagsOptions {
   logger?: Logger;
 }
 
-export interface SlashPluginMethod {
-  (slash: SlashInstance, args: any): Promise<any> | any;
+export interface SlashPluginMethod<S extends SlashInstance = SlashInstance> {
+  (slash: S, args: any): Promise<any> | any;
 }
 
-export interface SlashPluginMethodMap
-  extends Record<string, SlashPluginMethod> {}
+export interface SlashPluginMethodMap<S extends SlashInstance = SlashInstance>
+  extends Record<string, SlashPluginMethod<S>> {}
 
-export interface SlashPlugin {
-  id: symbol;
-  require: SlashPlugin[];
-  install: (options: any) => Promise<{
+export interface SlashPluginInstall<P extends SlashPlugin[], O> {
+  (options: O): Promise<{
     events?: Record<
       string,
       (
-        instance: SlashInstance,
+        instance: SlashInstance<P>,
         event: { type: string; data: any },
       ) => Promise<void>
     >;
-    methods: SlashPluginMethodMap;
+    methods: SlashPluginMethodMap<SlashInstance<P>>;
   }>;
 }
-export interface SlashInstance {
+
+export interface SlashPlugin<
+  O extends Record<string, any> = {},
+  P extends SlashPlugin[] = [],
+> {
+  id: symbol;
+  require: P;
+  install: SlashPluginInstall<P, O>;
+}
+export interface SlashBase {
   logger: Logger;
   emit: (type: string, data: any) => Promise<boolean>;
 }
 
-type Methods<P extends SlashPlugin[]> = Awaited<
+type SlashInstanceWithMethods<M extends SlashPluginMethodMap> =
+  UnionToIntersection<
+    SlashBase & {
+      [K in keyof M]: RemoveInstance<M[K]>;
+    }
+  >;
+
+export type SlashInstance<P extends SlashPlugin[] = []> = P extends []
+  ? SlashBase
+  : SlashInstanceWithMethods<MethodsFromPlugins<P>>;
+
+type MethodsFromPlugins<P extends SlashPlugin[]> = Awaited<
   ReturnType<{} & P[number]['install']>
 >['methods'];
 
@@ -61,23 +79,16 @@ interface RemoveInstance<T extends SlashPluginMethod> {
   (args?: Parameters<T>[1] | undefined): ReturnType<T>;
 }
 
-type SlashInstanceWithMethods<M extends SlashPluginMethodMap> =
-  UnionToIntersection<
-    SlashInstance & {
-      [K in keyof M]: RemoveInstance<M[K]>;
-    }
-  >;
-
 type OptionsFromPlugins<P extends SlashPlugin[]> = UnionToIntersection<
   | Parameters<P[number]['install']>[0]
   | Parameters<P[number]['require'][number]['install']>[0]
 >;
 
 export interface slashtags {
-  <P extends SlashPlugin[]>(
+  <P extends SlashPlugin<any, any>[]>(
     plugins: P,
     options: SlashtagsOptions & OptionsFromPlugins<P>,
-  ): SlashInstanceWithMethods<Methods<P>>;
+  ): SlashInstance<P>;
 }
 
 // Utilities

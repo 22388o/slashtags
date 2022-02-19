@@ -62,40 +62,56 @@ export const slashtags = async (plugins, options) => {
 };
 
 (async () => {
+  /** @type {import('./interfaces').SlashPlugin<{bar :{[key:string]: number}}>} */
   const pluginB = {
     id: Symbol('pluginB'),
     require: [],
-    /** @param {{bar: {[key:string] : number}}} options */
     install: async function (options) {
       return { methods: {} };
     },
   };
 
+  /** @type {import('./interfaces').SlashPlugin<{dar: string}>} */
+  const pluginD = {
+    id: Symbol('pluginD'),
+    require: [],
+    install: async function (options) {
+      return { methods: {} };
+    },
+  };
+
+  /** @type {import('./interfaces').SlashPlugin<{car: number[]}, [pluginD]>} */
   const pluginC = {
     id: Symbol('pluginC'),
-    require: [pluginB],
-    /** @param {{car: number[]}} options */
-    install: async function (options) {
-      return { methods: {} };
-    },
-  };
-
-  const pluginA = {
-    id: Symbol('pluginA'),
-    require: [pluginB, pluginC],
-    /**
-     * @param {{foo: string}} options
-     */
+    require: [pluginD],
     install: async function (options) {
       return {
         methods: {
-          /** @type {import('./interfaces').SlashPluginMethod<{foo?:string}>} */
+          /**
+           * @param {{pluginCFooCFoo: string}} args
+           */
+          fooC: (slash, args) => {},
+        },
+      };
+    },
+  };
+
+  /** @type {import('./interfaces').SlashPlugin<{foo: string}, [pluginC]>} */
+  const pluginA = {
+    id: Symbol('pluginA'),
+    require: [pluginC],
+    install: async function (options) {
+      return {
+        methods: {
+          /**
+           * @param {*} args
+           * @returns
+           */
           foo: function (slash, args) {
-            slash.bar();
+            slash.fooC({ pluginCFooCFoo: '324324324324' });
             return 3;
           },
           /**
-           * @param {import('./interfaces').SlashInstance} slash
            * @param {{bar:number}} args
            */
           bar: function (slash, args) {
@@ -116,8 +132,3 @@ export const slashtags = async (plugins, options) => {
   console.log(slash.foo({ foo: '234' }));
   console.log(slash.bar({ bar: 324 }));
 })();
-
-/**
- * @typedef {import('./interfaces').SlashInstance} SlashInstance
- * @typedef {import('./interfaces').SlashPlugin} SlashPlugin
- */
