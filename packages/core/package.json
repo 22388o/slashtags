@@ -37,12 +37,11 @@
     "url": "git+https://github.com/synonymdev/slashtags.git"
   },
   "scripts": {
-    "build": "aegir build && npm run augment",
+    "build": "aegir build",
     "test": "c8 aegir test",
     "lint": "aegir ts -p check && aegir lint --fix",
     "clean": "rimraf ./dist",
-    "dep-check": "aegir dep-check",
-    "augment": "cat augment.d.ts types/src/index.d.ts > dist/types/src/index.d.ts"
+    "dep-check": "aegir dep-check"
   },
   "dependencies": {
     "events": "^3.3.0"

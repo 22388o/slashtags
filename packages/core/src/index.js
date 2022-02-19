@@ -2,155 +2,122 @@ import EventEmitter from 'events';
 import { errors, warnings, SlashtagsError } from './errors.js';
 import { HOOKS } from './constants.js';
 export { SlashtagsError, errors, warnings, HOOKS };
-export class Slashtags extends EventEmitter {
-  /** @param {import('./interfaces').SlashtagsOptions} [options] */
-  constructor(options) {
-    super();
 
-    this.logger = options?.logger || console;
+/** @param {SlashPlugin[]} plugins */
+const filterInstallers = (plugins) => {
+  const symbols = new Set();
+  return plugins
+    .flatMap((p) => [p, ...p.require])
+    .filter((plugin) => {
+      const shouldAdd = !symbols.has(plugin.id);
+      symbols.add(plugin.id);
+      return shouldAdd;
+    })
+    .map((plugin) => plugin.install);
+};
 
-    this._setup = {
-      /** @type {Array<Promise<void>>} */
-      queue: [],
-      decorators: new Set(),
-      plugins: new Map(),
-      currentPlugin: null,
-    };
-  }
+/** @type {import('./interfaces').slashtags} */
+// @ts-ignore
+export const slashtags = async (plugins, options) => {
+  const emitter = new EventEmitter();
 
-  get status() {
-    return {
-      loaded: !this._setup,
-    };
-  }
+  const slash = {
+    logger: options?.logger || console,
+    /**
+     *
+     * @param {string} type
+     * @param {*} data
+     * @returns
+     */
+    emit: async (type, data) => {
+      // @ts-ignore
+      let handlers = emitter._events[type];
+      if (handlers === undefined) return false;
 
-  // Extends EventEmitter
-  // @ts-ignore
-  emit(type, ...args) {
-    if (Object.values(HOOKS).includes(type)) {
-      throw errors.SLASH_ERR_PROTECTED_HOOK(type);
-    }
+      if (typeof handlers === 'function') handlers = [handlers];
 
-    return _emit.call(this, type, ...args);
-  }
-
-  // Plugin method
-  /**
-   * @type {<O extends Record<string, any> = {}>(plugin:import('./interfaces').Plugin<O>, options: O)=> PromiseLike<void> & Slashtags}
-   */
-  // @ts-ignore
-  use(plugin, options = {}) {
-    if (this.status.loaded) {
-      throw errors.SLASH_ERR_ALREADY_LOADED(plugin);
-    } else if (this._setup.plugins.has(plugin)) {
-      if (
-        JSON.stringify(this._setup.plugins.get(plugin)) !==
-        JSON.stringify(options)
-      ) {
-        this.logger.warn(
-          warnings.SLASH_WARN_ALREADY_INSTALLED_WITH_DIFFERENT_OPTIONS(
-            plugin,
-            this._setup.plugins.get(plugin),
-          ),
-        );
+      for (const handler of handlers) {
+        await handler(slash, data);
       }
+      return true;
+    },
+  };
+
+  const extensions = await Promise.all(
+    filterInstallers(plugins).map((install) => install(options)),
+  );
+
+  /** @param {import('./interfaces').SlashPluginMethod} method */
+  const wrapMethod = (method) => (/** @type {*} */ args) => method(slash, args);
+
+  for (const extension of extensions) {
+    for (const [name, method] of Object.entries(extension.methods || {})) {
       // @ts-ignore
-      return this;
+      slash[name] = wrapMethod(method);
     }
-
-    // @ts-ignore
-    const promise = plugin(this, options);
-    this._setup.queue.push(promise);
-
-    Object.assign(this, {
-      then: promise.then.bind(promise),
-    });
-
-    this._setup.plugins.set(plugin, options);
-    // @ts-ignore
-    return this;
   }
 
-  /**
-   *
-   * @param {string} name
-   * @param {any} value
-   */
-  decorate(name, value) {
-    if (this._setup.decorators.has(name)) {
-      throw errors.SLASH_ERR_DEC_ALREADY_PRESENT(name);
-    } else if (
-      // @ts-ignore
-      this[name] !== undefined
-    ) {
-      throw errors.SLASH_ERR_DEC_BUILTIN_PROPERTY(name);
-    }
+  // @ts-ignore
+  return slash;
+};
 
-    this._setup.decorators.add(name);
-    // @ts-ignore
-    this[name] = value;
-  }
+(async () => {
+  const pluginB = {
+    id: Symbol('pluginB'),
+    require: [],
+    /** @param {{bar: {[key:string] : number}}} options */
+    install: async function (options) {
+      return { methods: {} };
+    },
+  };
 
-  // Life cycle hooks
-  /**
-   *
-   * @returns {Promise<Slashtags>}
-   */
-  async ready() {
-    if (this.status.loaded) return this;
+  const pluginC = {
+    id: Symbol('pluginC'),
+    require: [pluginB],
+    /** @param {{car: number[]}} options */
+    install: async function (options) {
+      return { methods: {} };
+    },
+  };
 
-    // @ts-ignore
-    delete this.then;
+  const pluginA = {
+    id: Symbol('pluginA'),
+    require: [pluginB, pluginC],
+    /**
+     * @param {{foo: string}} options
+     */
+    install: async function (options) {
+      return {
+        methods: {
+          /** @type {import('./interfaces').SlashPluginMethod<{foo?:string}>} */
+          foo: function (slash, args) {
+            slash.bar();
+            return 3;
+          },
+          /**
+           * @param {import('./interfaces').SlashInstance} slash
+           * @param {{bar:number}} args
+           */
+          bar: function (slash, args) {
+            return 'bar';
+          },
+        },
+      };
+    },
+  };
 
-    await Promise.all(this._setup.queue);
-    await _emit.call(this, HOOKS.OnReady);
+  const slash = await slashtags([pluginA, pluginB], {
+    foo: '234',
+    bar: { fast: 234 },
+    car: [1, 2],
+  });
 
-    // @ts-ignore
-    delete this._setup;
-    return this;
-  }
-
-  async close() {
-    await _emit.call(this, HOOKS.OnClose);
-    return this;
-  }
-
-  // Hooks
-  /** @param {Parameters<EventEmitter['on']>[1]} cb */
-  onReady(cb) {
-    return this.on(HOOKS.OnReady, cb);
-  }
-
-  /** @param {Parameters<EventEmitter['on']>[1]} cb */
-  onClose(cb) {
-    return this.on(HOOKS.OnClose, cb);
-  }
-}
+  console.log(slash);
+  console.log(slash.foo({ foo: '234' }));
+  console.log(slash.bar({ bar: 324 }));
+})();
 
 /**
- *
- * @param {string} type
- * @param  {...any} args
- * @returns
+ * @typedef {import('./interfaces').SlashInstance} SlashInstance
+ * @typedef {import('./interfaces').SlashPlugin} SlashPlugin
  */
-async function _emit(type, ...args) {
-  // @ts-ignore
-  let handlers = this._events[type];
-  if (handlers === undefined) return false;
-
-  if (typeof handlers === 'function') handlers = [handlers];
-
-  for (const handler of handlers) {
-    // @ts-ignore
-    await handler.bind(this)(...args);
-  }
-
-  return true;
-}
-
-/** @type {(options?: SlashtagsOptions) => Slashtags} */
-export const slashtags = (options) => new Slashtags(options);
-
-export default slashtags;
-
-/** @typedef {import('./interfaces').SlashtagsOptions} SlashtagsOptions */
